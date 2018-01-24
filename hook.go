@@ -36,13 +36,13 @@ func New(name string, conf Config) (*AppInsightsHook, error) {
 		return nil, errors.New("Telemetry name is required")
 	}
 	telemetryConf := appinsights.NewTelemetryConfiguration(conf.InstrumentationKey)
-	if telemetryConf.MaxBatchSize != 0 {
+	if conf.MaxBatchSize != 0 {
 		telemetryConf.MaxBatchSize = conf.MaxBatchSize
 	}
-	if telemetryConf.MaxBatchInterval != 0 {
+	if conf.MaxBatchInterval != 0 {
 		telemetryConf.MaxBatchInterval = conf.MaxBatchInterval
 	}
-	if telemetryConf.EndpointUrl != "" {
+	if conf.EndpointUrl != "" {
 		telemetryConf.EndpointUrl = conf.EndpointUrl
 	}
 	telemetryClient := appinsights.NewTelemetryClientFromConfig(telemetryConf)
@@ -86,8 +86,8 @@ func (hook *AppInsightsHook) SetLevels(levels []logrus.Level) {
 	hook.levels = levels
 }
 
-// Async sets async flag and send log asynchroniously.
-// If use this option, Fire() does not return error.
+// SetAsync sets async flag for sending logs asynchronously.
+// If use this true, Fire() does not return error.
 func (hook *AppInsightsHook) SetAsync(async bool) {
 	hook.async = async
 }
@@ -102,7 +102,7 @@ func (hook *AppInsightsHook) AddFilter(name string, fn func(interface{}) interfa
 	hook.filters[name] = fn
 }
 
-// Fire is invoked by logrus and sends log to kinesis.
+// Fire is invoked by logrus and sends log to Application Insights.
 func (hook *AppInsightsHook) Fire(entry *logrus.Entry) error {
 	if !hook.async {
 		return hook.fire(entry)
