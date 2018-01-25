@@ -2,7 +2,6 @@ package logrus_appinsights
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/Microsoft/ApplicationInsights-Go/appinsights"
@@ -15,6 +14,14 @@ var defaultLevels = []logrus.Level{
 	logrus.ErrorLevel,
 	logrus.WarnLevel,
 	logrus.InfoLevel,
+}
+
+var levelMap = map[logrus.Level]appinsights.SeverityLevel{
+	logrus.PanicLevel: appinsights.Critical,
+	logrus.FatalLevel: appinsights.Critical,
+	logrus.ErrorLevel: appinsights.Error,
+	logrus.WarnLevel:  appinsights.Warning,
+	logrus.InfoLevel:  appinsights.Information,
 }
 
 // AppInsightsHook is a logrus hook for Application Insights
@@ -30,10 +37,7 @@ type AppInsightsHook struct {
 // New returns an initialised logrus hook for Application Insights
 func New(name string, conf Config) (*AppInsightsHook, error) {
 	if conf.InstrumentationKey == "" {
-		return nil, errors.New("InstrumentationKey is required in configuration")
-	}
-	if name == "" {
-		return nil, errors.New("Telemetry name is required")
+		return nil, fmt.Errorf("InstrumentationKey is required and missing from configuration")
 	}
 	telemetryConf := appinsights.NewTelemetryConfiguration(conf.InstrumentationKey)
 	if conf.MaxBatchSize != 0 {
@@ -46,7 +50,9 @@ func New(name string, conf Config) (*AppInsightsHook, error) {
 		telemetryConf.EndpointUrl = conf.EndpointUrl
 	}
 	telemetryClient := appinsights.NewTelemetryClientFromConfig(telemetryConf)
-	telemetryClient.Context().Cloud().SetRoleName(name)
+	if name != "" {
+		telemetryClient.Context().Cloud().SetRoleName(name)
+	}
 	return &AppInsightsHook{
 		client:       telemetryClient,
 		levels:       defaultLevels,
@@ -58,16 +64,15 @@ func New(name string, conf Config) (*AppInsightsHook, error) {
 // NewWithAppInsightsConfig returns an initialised logrus hook for Application Insights
 func NewWithAppInsightsConfig(name string, conf *appinsights.TelemetryConfiguration) (*AppInsightsHook, error) {
 	if conf == nil {
-		return nil, errors.New("Nil configuration provided")
+		return nil, fmt.Errorf("Nil configuration provided")
 	}
 	if conf.InstrumentationKey == "" {
-		return nil, errors.New("InstrumentationKey is required in configuration")
-	}
-	if name == "" {
-		return nil, errors.New("Telemetry name is required")
+		return nil, fmt.Errorf("InstrumentationKey is required in configuration")
 	}
 	telemetryClient := appinsights.NewTelemetryClientFromConfig(conf)
-	telemetryClient.Context().Cloud().SetRoleName(name)
+	if name != "" {
+		telemetryClient.Context().Cloud().SetRoleName(name)
+	}
 	return &AppInsightsHook{
 		client:       telemetryClient,
 		levels:       defaultLevels,
@@ -102,31 +107,36 @@ func (hook *AppInsightsHook) AddFilter(name string, fn func(interface{}) interfa
 	hook.filters[name] = fn
 }
 
-// Fire is invoked by logrus and sends log to Application Insights.
+// Fire is invoked by logrus and sends log data to Application Insights.
 func (hook *AppInsightsHook) Fire(entry *logrus.Entry) error {
 	if !hook.async {
 		return hook.fire(entry)
 	}
-
+	// async - fire and forget
 	go hook.fire(entry)
 	return nil
 }
 
 func (hook *AppInsightsHook) fire(entry *logrus.Entry) error {
-	event := hook.getData(entry)
-	if event == nil {
-		return fmt.Errorf("Failed to extract data from log entry %+v", entry)
+	trace, err := hook.buildTrace(entry)
+	if err != nil {
+		return err
 	}
-	hook.client.TrackEvent(*event)
+	hook.client.TrackTraceTelemetry(trace)
 	return nil
 }
 
-func (hook *AppInsightsHook) getData(entry *logrus.Entry) *string {
+func (hook *AppInsightsHook) buildTrace(entry *logrus.Entry) (*appinsights.TraceTelemetry, error) {
+	// Add the message as a field if it isn't already
 	if _, ok := entry.Data["message"]; !ok {
 		entry.Data["message"] = entry.Message
 	}
 
-	data := make(logrus.Fields)
+	level := levelMap[entry.Level]
+	trace := appinsights.NewTraceTelemetry(entry.Message, level)
+	if trace == nil {
+		return nil, fmt.Errorf("Could not create telemetry trace with entry %+v", entry)
+	}
 	for k, v := range entry.Data {
 		if _, ok := hook.ignoreFields[k]; ok {
 			continue
@@ -136,15 +146,12 @@ func (hook *AppInsightsHook) getData(entry *logrus.Entry) *string {
 		} else {
 			v = formatData(v) // use default formatter
 		}
-		data[k] = v
+		vStr := fmt.Sprintf("%v", v)
+		trace.SetProperty(k, vStr)
 	}
-
-	bytes, err := json.Marshal(data)
-	if err != nil {
-		return nil
-	}
-	str := string(bytes[:])
-	return &str
+	trace.SetProperty("source_level", entry.Level.String())
+	trace.SetProperty("source_timestamp", entry.Time.String())
+	return trace, nil
 }
 
 // formatData returns value as a suitable format.

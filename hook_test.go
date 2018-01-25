@@ -119,56 +119,10 @@ func TestAddFilter(t *testing.T) {
 	}
 }
 
-func TestGetData(t *testing.T) {
-	assert := assert.New(t)
-
-	const defaultMessage = "entry_message"
-
-	tests := []struct {
-		data     map[string]interface{}
-		expected string
-	}{
-		{
-			map[string]interface{}{},
-			`{"message":"entry_message"}`,
-		},
-		{
-			map[string]interface{}{"message": "field_message"},
-			`{"message":"field_message"}`,
-		},
-		{
-			map[string]interface{}{
-				"name":  "apple",
-				"price": 105,
-				"color": "red",
-			},
-			`{"color":"red","message":"entry_message","name":"apple","price":105}`,
-		},
-		{
-			map[string]interface{}{
-				"name":    "apple",
-				"price":   105,
-				"color":   "red",
-				"message": "field_message",
-			},
-			`{"color":"red","message":"field_message","name":"apple","price":105}`,
-		},
-	}
-
-	for _, tt := range tests {
-		target := fmt.Sprintf("%+v", tt)
-
-		hook := AppInsightsHook{}
-		entry := &logrus.Entry{
-			Message: defaultMessage,
-			Data:    tt.data,
-		}
-
-		actual := hook.getData(entry)
-		assert.Equal(tt.expected, *actual, target)
-	}
+func TestBuildTrace(t *testing.T) {
+	// You cannot introspect an trace to check for
+	// consitency with entry or expected trace.
 }
-
 func TestFormatData(t *testing.T) {
 	assert := assert.New(t)
 
