@@ -193,21 +193,29 @@ func TestStringPtr(t *testing.T) {
 	}
 }
 
-var isSuccessful bool
-var globalTest *testing.T
+type RequestContext struct {
+	statusCode int
+	server     *httptest.Server
+	doneChan   chan bool
+}
 
 func TestFire(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(handleFire))
-	defer server.Close()
+	assert := assert.New(t)
+	context := RequestContext{
+		statusCode: 500,
+	}
+	context.doneChan = make(chan bool)
+	context.server = httptest.NewServer(http.HandlerFunc(context.receiveHandler))
+	defer context.server.Close()
 
 	hook, err := New("TestClient", Config{
 		InstrumentationKey: "NotEmpty",
-		EndpointUrl:        server.URL,
+		EndpointUrl:        context.server.URL,
 		MaxBatchSize:       1,
 		MaxBatchInterval:   time.Millisecond * 10,
 	})
 	if err != nil || hook == nil {
-		t.Errorf(err.Error())
+		fmt.Errorf(err.Error())
 	}
 	logrus.AddHook(hook)
 
@@ -219,15 +227,16 @@ func TestFire(t *testing.T) {
 		"value": "fieldValue",
 	}
 
+	// This should call our context server and receive handler.
+	// We're not using the response writer to determine success,
+	// we are checking the context object instead.
 	logger.WithFields(f).Error("I see dead people!")
 
-	// Wait enough time to allow the handler to run
-	time.Sleep(time.Second * 2)
-
-	assert.True(t, isSuccessful)
+	_ = <-context.doneChan
+	assert.Equal(context.statusCode, http.StatusOK, fmt.Sprintf("actual value %d did not match expected %d", context.statusCode, http.StatusOK))
 }
 
-func handleFire(w http.ResponseWriter, r *http.Request) {
+func (c *RequestContext) receiveHandler(w http.ResponseWriter, r *http.Request) {
 	reader, err := gzip.NewReader(r.Body)
 	if err != nil {
 		return
@@ -239,14 +248,26 @@ func handleFire(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	trace := j[0]
-	trace.assertPath(globalTest, "data.baseData.properties.message", "I see dead people!")
-	trace.assertPath(globalTest, "data.baseData.properties.source_level", "error")
-	trace.assertPath(globalTest, "data.baseData.properties.value", "fieldValue")
-	trace.assertPath(globalTest, "data.baseData.properties.tag", "fieldTag")
-	isSuccessful = true
+	testCases := map[string]string{
+		"data.baseData.properties.message":      "I see dead people!",
+		"data.baseData.properties.source_level": "error",
+		"data.baseData.properties.value":        "fieldValue",
+		"data.baseData.properties.tag":          "fieldTag",
+	}
+	for k, v := range testCases {
+		if err := trace.assertPath(k, v); err != nil {
+			c.statusCode = http.StatusBadRequest
+			c.doneChan <- true
+			return
+		}
+	}
+	c.statusCode = http.StatusOK
+	c.doneChan <- true
+	return
 }
 
-func TestHandleFire(t *testing.T) {
+func TestHandler(t *testing.T) {
+	assert := assert.New(t)
 	payload := "{\"name\":\"Microsoft.ApplicationInsights.Message\",\"time\":\"2018-01-25T12:13:42Z\",\"iKey\":\"NotEmpty\",\"tags\":{\"ai.cloud.role\":\"TestClient\",\"ai.device.id\":\"RAZER-BLADE\",\"ai.device.machineName\":\"RAZER-BLADE\",\"ai.device.os\":\"windows\",\"ai.device.roleInstance\":\"RAZER-BLADE\",\"ai.internal.sdkVersion\":\"go:0.3.1-pre\"},\"data\":{\"baseType\":\"MessageData\",\"baseData\":{\"ver\":2,\"properties\":{\"message\":\"I see dead people!\",\"source_level\":\"error\",\"source_timestamp\":\"2018-01-25 12:13:42.4839613 +0000 GMT m=+0.007540300\",\"tag\":\"fieldTag\",\"value\":\"fieldValue\"},\"message\":\"I see dead people!\",\"severityLevel\":3}}}"
 	var postBody bytes.Buffer
 	gzipWriter := gzip.NewWriter(&postBody)
@@ -257,16 +278,39 @@ func TestHandleFire(t *testing.T) {
 
 	gzipWriter.Close()
 
-	fmt.Printf("%+v", string(postBody.Bytes()))
 	reader := bytes.NewReader(postBody.Bytes())
 	req, err := http.NewRequest("POST", "", reader)
 	if err != nil {
 		t.Errorf(err.Error())
 	}
 
-	globalTest = t
-	var res http.ResponseWriter
-	handleFire(res, req)
+	context := RequestContext{
+		statusCode: 500,
+	}
+	context.doneChan = make(chan bool)
+
+	// We're not using the response writer to determine success,
+	// we are checking the context object instead.
+	var rw mockResponseWriter
+	rw.HeaderMap = make(map[string][]string)
+	go context.receiveHandler(&rw, req)
+
+	_ = <-context.doneChan
+	assert.Equal(context.statusCode, http.StatusOK, fmt.Sprintf("actual value %d did not match expected %d", context.statusCode, http.StatusOK))
+}
+
+type mockResponseWriter struct {
+	HeaderMap http.Header
+}
+
+func (rw *mockResponseWriter) Header() http.Header {
+	return rw.HeaderMap
+}
+func (rw *mockResponseWriter) WriteHeader(statusCode int) {
+	rw.HeaderMap["status_code"][0] = strconv.Itoa(statusCode)
+}
+func (rw *mockResponseWriter) Write([]byte) (int, error) {
+	return 0, nil
 }
 
 type jsonMessage map[string]interface{}
@@ -292,57 +336,57 @@ func parsePayload(payload []byte) (jsonPayload, error) {
 	return result, nil
 }
 
-func (msg jsonMessage) assertPath(t *testing.T, path string, value interface{}) {
+func (msg jsonMessage) assertPath(path string, value interface{}) error {
 	const tolerance = 0.0001
 	v, err := msg.getPath(path)
 	if err != nil {
-		t.Error(err.Error())
-		return
+		return err
 	}
 
 	if num, ok := value.(int); ok {
 		if vnum, ok := v.(float64); ok {
 			if math.Abs(float64(num)-vnum) > tolerance {
-				t.Errorf("Data was unexpected at %s. Got %g want %d", path, vnum, num)
+				return fmt.Errorf("Data was unexpected at %s. Got %g want %d", path, vnum, num)
 			}
 		} else if vnum, ok := v.(int); ok {
 			if vnum != num {
-				t.Errorf("Data was unexpected at %s. Got %d want %d", path, vnum, num)
+				return fmt.Errorf("Data was unexpected at %s. Got %d want %d", path, vnum, num)
 			}
 		} else {
-			t.Errorf("Expected value at %s to be a number, but was %T", path, v)
+			return fmt.Errorf("Expected value at %s to be a number, but was %T", path, v)
 		}
 	} else if num, ok := value.(float64); ok {
 		if vnum, ok := v.(float64); ok {
 			if math.Abs(num-vnum) > tolerance {
-				t.Errorf("Data was unexpected at %s. Got %g want %g", path, vnum, num)
+				return fmt.Errorf("Data was unexpected at %s. Got %g want %g", path, vnum, num)
 			}
 		} else if vnum, ok := v.(int); ok {
 			if math.Abs(num-float64(vnum)) > tolerance {
-				t.Errorf("Data was unexpected at %s. Got %d want %g", path, vnum, num)
+				return fmt.Errorf("Data was unexpected at %s. Got %d want %g", path, vnum, num)
 			}
 		} else {
-			t.Errorf("Expected value at %s to be a number, but was %T", path, v)
+			return fmt.Errorf("Expected value at %s to be a number, but was %T", path, v)
 		}
 	} else if str, ok := value.(string); ok {
 		if vstr, ok := v.(string); ok {
 			if str != vstr {
-				t.Errorf("Data was unexpected at %s. Got '%s' want '%s'", path, vstr, str)
+				return fmt.Errorf("Data was unexpected at %s. Got '%s' want '%s'", path, vstr, str)
 			}
 		} else {
-			t.Errorf("Expected value at %s to be a string, but was %T", path, v)
+			return fmt.Errorf("Expected value at %s to be a string, but was %T", path, v)
 		}
 	} else if bl, ok := value.(bool); ok {
 		if vbool, ok := v.(bool); ok {
 			if bl != vbool {
-				t.Errorf("Data was unexpected at %s. Got %t want %t", path, vbool, bl)
+				return fmt.Errorf("Data was unexpected at %s. Got %t want %t", path, vbool, bl)
 			}
 		} else {
-			t.Errorf("Expected value at %s to be a bool, but was %T", path, v)
+			return fmt.Errorf("Expected value at %s to be a bool, but was %T", path, v)
 		}
 	} else {
-		t.Errorf("Unsupported type: %#v", value)
+		return fmt.Errorf("Unsupported type: %#v", value)
 	}
+	return nil
 }
 
 func (msg jsonMessage) getPath(path string) (interface{}, error) {
