@@ -127,10 +127,6 @@ func TestAddFilter(t *testing.T) {
 	}
 }
 
-func TestBuildTrace(t *testing.T) {
-	// You cannot introspect an trace to check for
-	// consitency with entry or expected trace.
-}
 func TestFormatData(t *testing.T) {
 	assert := assert.New(t)
 
