@@ -13,7 +13,6 @@ before_install:
   - go get github.com/mattn/goveralls
   - go get golang.org/x/tools/cmd/cover
 before_script:
-  - go vet ./...
   - gofmt -s -l .
 script:
   - go test -coverprofile=coverage.txt -covermode=atomic
