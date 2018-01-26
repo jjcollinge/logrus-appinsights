@@ -12,7 +12,6 @@ before_install:
   - go get github.com/axw/gocov/gocov
   - go get github.com/mattn/goveralls
   - go get golang.org/x/tools/cmd/cover
-  - go get -v ./...
 before_script:
   - go vet ./...
   - gofmt -s -l .
