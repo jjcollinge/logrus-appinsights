@@ -1,15 +1,3 @@
-[![Build Status](https://travis-ci.org/jjcollinge/logrus-appinsights.svg?branch=master)](https://travis-ci.org/jjcollinge/logrus-appinsights)
-[![Coverage Status](https://coveralls.io/repos/github/jjcollinge/logrus-appinsights/badge.svg?branch=master)](https://coveralls.io/github/jjcollinge/logrus-appinsights?branch=master)
-[![codecov](https://codecov.io/gh/jjcollinge/logrus-appinsights/branch/master/graph/badge.svg)](https://codecov.io/gh/jjcollinge/logrus-appinsights)
-
-
-# Application Insights Hook for Logrus <img src="http://i.imgur.com/hTeVwmJ.png" width="40" height="40" alt=":walrus:" class="emoji" title=":walrus:"/>
-
-## Usage
-
-See examples folder.
-
-```go
 package main
 
 import (
@@ -54,4 +42,3 @@ func main() {
 		time.Sleep(time.Second * 1)
 	}
 }
-```

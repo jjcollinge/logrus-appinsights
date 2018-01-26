@@ -7,51 +7,39 @@
 
 ## Usage
 
-See examples folder.
-
 ```go
-package main
-
 import (
-	"time"
+    "fmt"
+    "time"
 
-	"github.com/jjcollinge/logrus-appinsights"
-	log "github.com/sirupsen/logrus"
+    "github.com/jjcollinge/logrus-appinsights"
+	"github.com/sirupsen/logrus"
 )
 
-func init() {
+func main() {
 	hook, err := logrus_appinsights.New("my_client", logrus_appinsights.Config{
-		InstrumentationKey: "instrumentation_key",
+		InstrumentationKey: "my_instrumentation_key",
 		MaxBatchSize:       10,              // optional
 		MaxBatchInterval:   time.Second * 5, // optional
 	})
 	if err != nil || hook == nil {
-		panic(err)
+		fmt.Errorf("%+v", err)
 	}
 
-	// set custom levels
-	hook.SetLevels([]log.Level{
-		log.PanicLevel,
-		log.ErrorLevel,
+	hook.SetLevels([]logrus.Level{
+		logrus.PanicLevel,
+		logrus.ErrorLevel,
+		logrus.InfoLevel,
 	})
 
-	// ignore fields
-	hook.AddIgnore("private")
-	log.AddHook(hook)
-}
+	logger := logrus.New()
+	logger.Hooks.Add(hook)
 
-func main() {
-
-	f := log.Fields{
-		"field1":  "field1_value",
-		"field2":  "field2_value",
-		"private": "private_value",
+	f := logrus.Fields{
+		"my_tag": "tag_value",
+		"my_key": "key_value",
 	}
 
-	// Send log to Application Insights
-	for {
-		log.WithFields(f).Error("my message")
-		time.Sleep(time.Second * 1)
-	}
+	logger.WithFields(f).Error("my message")
 }
 ```
