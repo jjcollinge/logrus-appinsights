@@ -27,7 +27,7 @@
 
 [[constraint]]
   name = "github.com/Microsoft/ApplicationInsights-Go"
-  version = "0.4.0"
+  revision = "98ac7ca026c26818888600ea0d966987aa56f043"
 
 [[constraint]]
   name = "github.com/sirupsen/logrus"

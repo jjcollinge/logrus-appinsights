@@ -9,12 +9,8 @@
 
 [[projects]]
   name = "github.com/Microsoft/ApplicationInsights-Go"
-  packages = [
-    "appinsights",
-    "appinsights/contracts"
-  ]
+  packages = ["appinsights"]
   revision = "98ac7ca026c26818888600ea0d966987aa56f043"
-  version = "v0.4"
 
 [[projects]]
   name = "github.com/davecgh/go-spew"
@@ -27,12 +23,6 @@
   packages = ["difflib"]
   revision = "792786c7400a136282c1664665ae0a8db921c6c2"
   version = "v1.0.0"
-
-[[projects]]
-  name = "github.com/satori/go.uuid"
-  packages = ["."]
-  revision = "f58768cc1a7a7e77a3bd49e98cdd21419399b6a3"
-  version = "v1.2.0"
 
 [[projects]]
   name = "github.com/sirupsen/logrus"
@@ -64,6 +54,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "ac460bc7b369e383bd7f05f12eb2cb556c974b39bb927255535d71b37930c8c6"
+  inputs-digest = "585bdba603ae1605188acb8d6b898eb8d6227aeef83c625294cc9ac4c6584d90"
   solver-name = "gps-cdcl"
   solver-version = 1
