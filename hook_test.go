@@ -211,7 +211,7 @@ func TestFire(t *testing.T) {
 		MaxBatchInterval:   time.Millisecond * 10,
 	})
 	if err != nil || hook == nil {
-		fmt.Errorf(err.Error())
+		t.Errorf(err.Error())
 	}
 	logrus.AddHook(hook)
 
