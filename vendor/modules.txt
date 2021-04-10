@@ -3,7 +3,9 @@ code.cloudfoundry.org/clock
 # github.com/davecgh/go-spew v1.1.0
 ## explicit
 github.com/davecgh/go-spew/spew
-# github.com/microsoft/ApplicationInsights-Go v0.4.3
+# github.com/gofrs/uuid v3.3.0+incompatible
+github.com/gofrs/uuid
+# github.com/microsoft/ApplicationInsights-Go v0.4.4
 ## explicit
 github.com/microsoft/ApplicationInsights-Go/appinsights
 github.com/microsoft/ApplicationInsights-Go/appinsights/contracts
@@ -11,7 +13,7 @@ github.com/microsoft/ApplicationInsights-Go/appinsights/contracts
 ## explicit
 github.com/pmezard/go-difflib/difflib
 # github.com/satori/go.uuid v1.2.0
-github.com/satori/go.uuid
+## explicit
 # github.com/sirupsen/logrus v1.0.4
 ## explicit
 github.com/sirupsen/logrus
