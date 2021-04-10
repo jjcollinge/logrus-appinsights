@@ -1,0 +1,26 @@
+# code.cloudfoundry.org/clock v0.0.0-20180518195852-02e53af36e6c
+code.cloudfoundry.org/clock
+# github.com/davecgh/go-spew v1.1.0
+## explicit
+github.com/davecgh/go-spew/spew
+# github.com/microsoft/ApplicationInsights-Go v0.4.3
+## explicit
+github.com/microsoft/ApplicationInsights-Go/appinsights
+github.com/microsoft/ApplicationInsights-Go/appinsights/contracts
+# github.com/pmezard/go-difflib v1.0.0
+## explicit
+github.com/pmezard/go-difflib/difflib
+# github.com/satori/go.uuid v1.2.0
+github.com/satori/go.uuid
+# github.com/sirupsen/logrus v1.0.4
+## explicit
+github.com/sirupsen/logrus
+# github.com/stretchr/testify v1.2.0
+## explicit
+github.com/stretchr/testify/assert
+# golang.org/x/crypto v0.0.0-20180123095555-3d37316aaa6b
+## explicit
+golang.org/x/crypto/ssh/terminal
+# golang.org/x/sys v0.0.0-20180909124046-d0be0721c37e
+golang.org/x/sys/unix
+golang.org/x/sys/windows
