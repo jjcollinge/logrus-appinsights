@@ -2,10 +2,12 @@ package logrus_appinsights
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
-
-	"github.com/Microsoft/ApplicationInsights-Go/appinsights"
+	"github.com/microsoft/ApplicationInsights-Go/appinsights"
+	"github.com/microsoft/ApplicationInsights-Go/appinsights/contracts"
 	"github.com/sirupsen/logrus"
+	"time"
 )
 
 var defaultLevels = []logrus.Level{
@@ -16,7 +18,7 @@ var defaultLevels = []logrus.Level{
 	logrus.InfoLevel,
 }
 
-var levelMap = map[logrus.Level]appinsights.SeverityLevel{
+var levelMap = map[logrus.Level]contracts.SeverityLevel{
 	logrus.PanicLevel: appinsights.Critical,
 	logrus.FatalLevel: appinsights.Critical,
 	logrus.ErrorLevel: appinsights.Error,
@@ -24,7 +26,7 @@ var levelMap = map[logrus.Level]appinsights.SeverityLevel{
 	logrus.InfoLevel:  appinsights.Information,
 }
 
-// AppInsightsHook is a logrus hook for Application Insights
+// AppInsightsHook is a logger hook for Application Insights
 type AppInsightsHook struct {
 	client appinsights.TelemetryClient
 
@@ -34,8 +36,31 @@ type AppInsightsHook struct {
 	filters      map[string]func(interface{}) interface{}
 }
 
+
 // New returns an initialised logrus hook for Application Insights
-func New(name string, conf Config) (*AppInsightsHook, error) {
+func New(iKey string) (*AppInsightsHook, error) {
+	if iKey == "" {
+		return nil, errors.New("InstrumentationKey is required and missing from configuration")
+	}
+	telemetryConfig := appinsights.NewTelemetryConfiguration(iKey)
+
+	// Configure how many items can be sent in one call to the data collector:
+	telemetryConfig.MaxBatchSize = 8192
+	// Configure the maximum delay before sending queued telemetry:
+	telemetryConfig.MaxBatchInterval = 2 * time.Second
+
+	telemetryClient := appinsights.NewTelemetryClientFromConfig(telemetryConfig)
+
+	return &AppInsightsHook{
+		client:       telemetryClient,
+		levels:       defaultLevels,
+		ignoreFields: make(map[string]struct{}),
+		filters:      make(map[string]func(interface{}) interface{}),
+	}, nil
+}
+
+// NewWithAppInsightsConfig returns an initialised logrus hook for Application Insights using a predefined config
+func NewWithAppInsightsConfig(conf *appinsights.TelemetryConfiguration) (*AppInsightsHook, error) {
 	if conf.InstrumentationKey == "" {
 		return nil, fmt.Errorf("InstrumentationKey is required and missing from configuration")
 	}
@@ -50,9 +75,7 @@ func New(name string, conf Config) (*AppInsightsHook, error) {
 		telemetryConf.EndpointUrl = conf.EndpointUrl
 	}
 	telemetryClient := appinsights.NewTelemetryClientFromConfig(telemetryConf)
-	if name != "" {
-		telemetryClient.Context().Cloud().SetRoleName(name)
-	}
+
 	return &AppInsightsHook{
 		client:       telemetryClient,
 		levels:       defaultLevels,
@@ -61,25 +84,6 @@ func New(name string, conf Config) (*AppInsightsHook, error) {
 	}, nil
 }
 
-// NewWithAppInsightsConfig returns an initialised logrus hook for Application Insights
-func NewWithAppInsightsConfig(name string, conf *appinsights.TelemetryConfiguration) (*AppInsightsHook, error) {
-	if conf == nil {
-		return nil, fmt.Errorf("Nil configuration provided")
-	}
-	if conf.InstrumentationKey == "" {
-		return nil, fmt.Errorf("InstrumentationKey is required in configuration")
-	}
-	telemetryClient := appinsights.NewTelemetryClientFromConfig(conf)
-	if name != "" {
-		telemetryClient.Context().Cloud().SetRoleName(name)
-	}
-	return &AppInsightsHook{
-		client:       telemetryClient,
-		levels:       defaultLevels,
-		ignoreFields: make(map[string]struct{}),
-		filters:      make(map[string]func(interface{}) interface{}),
-	}, nil
-}
 
 // Levels returns logging level to fire this hook.
 func (hook *AppInsightsHook) Levels() []logrus.Level {
@@ -107,13 +111,25 @@ func (hook *AppInsightsHook) AddFilter(name string, fn func(interface{}) interfa
 	hook.filters[name] = fn
 }
 
-// Fire is invoked by logrus and sends log data to Application Insights.
-func (hook *AppInsightsHook) Fire(entry *logrus.Entry) error {
+// Fire is invoked by logrus wrapper and sends log data to Application Insights.
+func (hook *AppInsightsHook) Fire(entry *logrus.Entry) (err error) {
 	if !hook.async {
 		return hook.fire(entry)
 	}
+
 	// async - fire and forget
-	go hook.fire(entry)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				err = errors.New(fmt.Sprintf("An error occurred: %s", r))
+			}
+		}()
+		hook.fire(entry)
+	}()
+
+	if err!=nil{
+		return err
+	}
 	return nil
 }
 
@@ -122,7 +138,7 @@ func (hook *AppInsightsHook) fire(entry *logrus.Entry) error {
 	if err != nil {
 		return err
 	}
-	hook.client.TrackTraceTelemetry(trace)
+	hook.client.Track(trace)
 	return nil
 }
 
@@ -135,7 +151,7 @@ func (hook *AppInsightsHook) buildTrace(entry *logrus.Entry) (*appinsights.Trace
 	level := levelMap[entry.Level]
 	trace := appinsights.NewTraceTelemetry(entry.Message, level)
 	if trace == nil {
-		return nil, fmt.Errorf("Could not create telemetry trace with entry %+v", entry)
+		return nil, errors.New(fmt.Sprintf("Could not create telemetry trace with entry %+v", entry))
 	}
 	for k, v := range entry.Data {
 		if _, ok := hook.ignoreFields[k]; ok {
@@ -147,10 +163,10 @@ func (hook *AppInsightsHook) buildTrace(entry *logrus.Entry) (*appinsights.Trace
 			v = formatData(v) // use default formatter
 		}
 		vStr := fmt.Sprintf("%v", v)
-		trace.SetProperty(k, vStr)
+		trace.Properties[k] = vStr
 	}
-	trace.SetProperty("source_level", entry.Level.String())
-	trace.SetProperty("source_timestamp", entry.Time.String())
+	trace.Properties["source_level"] = entry.Level.String()
+	trace.Properties["source_timestamp"] = entry.Time.String()
 	return trace, nil
 }
 

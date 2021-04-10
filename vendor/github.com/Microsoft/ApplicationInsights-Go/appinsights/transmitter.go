@@ -11,11 +11,12 @@ import (
 )
 
 type transmitter interface {
-	Transmit(payload []byte, items TelemetryBufferItems) (*transmissionResult, error)
+	Transmit(payload []byte, items telemetryBufferItems) (*transmissionResult, error)
 }
 
 type httpTransmitter struct {
 	endpoint string
+	client   *http.Client
 }
 
 type transmissionResult struct {
@@ -50,12 +51,15 @@ const (
 	serviceUnavailableResponse              = 503
 )
 
-func newTransmitter(endpointAddress string) transmitter {
-	return &httpTransmitter{endpointAddress}
+func newTransmitter(endpointAddress string, client *http.Client) transmitter {
+	if client == nil {
+		client = http.DefaultClient
+	}
+	return &httpTransmitter{endpointAddress, client}
 }
 
-func (transmitter *httpTransmitter) Transmit(payload []byte, items TelemetryBufferItems) (*transmissionResult, error) {
-	diagnosticsWriter.Printf("----------- Transmitting %d items ---------", len(items))
+func (transmitter *httpTransmitter) Transmit(payload []byte, items telemetryBufferItems) (*transmissionResult, error) {
+	diagnosticsWriter.Printf("--------- Transmitting %d items ---------", len(items))
 	startTime := time.Now()
 
 	// Compress the payload
@@ -78,8 +82,7 @@ func (transmitter *httpTransmitter) Transmit(payload []byte, items TelemetryBuff
 	req.Header.Set("Content-Type", "application/x-json-stream")
 	req.Header.Set("Accept-Encoding", "gzip, deflate")
 
-	client := http.DefaultClient
-	resp, err := client.Do(req)
+	resp, err := transmitter.client.Do(req)
 	if err != nil {
 		diagnosticsWriter.Printf("Failed to transmit telemetry: %s", err.Error())
 		return nil, err
@@ -121,7 +124,7 @@ func (transmitter *httpTransmitter) Transmit(payload []byte, items TelemetryBuff
 				for _, err := range result.response.Errors {
 					if err.Index < len(items) {
 						diagnosticsWriter.Printf("#%d - %d %s", err.Index, err.StatusCode, err.Message)
-						diagnosticsWriter.Printf("Telemetry item:\n\t%s", err.Index, string(items[err.Index:err.Index+1].serialize()))
+						diagnosticsWriter.Printf("Telemetry item:\n\t%s", string(items[err.Index:err.Index+1].serialize()))
 					}
 				}
 			}
@@ -177,13 +180,13 @@ func (result *itemTransmissionResult) CanRetry() bool {
 		result.StatusCode == tooManyRequestsOverExtendedTimeResponse
 }
 
-func (result *transmissionResult) GetRetryItems(payload []byte, items TelemetryBufferItems) ([]byte, TelemetryBufferItems) {
+func (result *transmissionResult) GetRetryItems(payload []byte, items telemetryBufferItems) ([]byte, telemetryBufferItems) {
 	if result.statusCode == partialSuccessResponse && result.response != nil {
 		// Make sure errors are ordered by index
 		sort.Sort(result.response.Errors)
 
 		var resultPayload bytes.Buffer
-		resultItems := make(TelemetryBufferItems, 0)
+		resultItems := make(telemetryBufferItems, 0)
 		ptr := 0
 		idx := 0
 

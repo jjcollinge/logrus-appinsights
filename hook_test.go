@@ -1,11 +1,13 @@
 package logrus_appinsights
 
+
 import (
 	"bytes"
 	"compress/gzip"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/microsoft/ApplicationInsights-Go/appinsights"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -19,19 +21,20 @@ import (
 )
 
 func TestNew(t *testing.T) {
-	assert := assert.New(t)
-
-	hook, err := New("test", Config{})
-	assert.Error(err)
-	assert.Nil(hook)
+	hook, err := New("test")
+	assert.NotNil(t, hook)
+	assert.Nil(t, err)
 }
 
 func TestNewWithAppInsightsConfig(t *testing.T) {
-	assert := assert.New(t)
-
-	hook, err := NewWithAppInsightsConfig("test", nil)
-	assert.Error(err)
-	assert.Nil(hook)
+	hook, err := NewWithAppInsightsConfig(&appinsights.TelemetryConfiguration{
+		InstrumentationKey: "instrumentation_key",
+		MaxBatchSize:       10,              // optional
+		MaxBatchInterval:   time.Second * 5, // optional
+		Client: &http.Client{}, 			 //optional
+	})
+	assert.NotNil(t, hook)
+	assert.Nil(t, err)
 }
 
 func TestLevels(t *testing.T) {
@@ -204,7 +207,7 @@ func TestFire(t *testing.T) {
 	context.server = httptest.NewServer(http.HandlerFunc(context.receiveHandler))
 	defer context.server.Close()
 
-	hook, err := New("TestClient", Config{
+	hook, err := NewWithAppInsightsConfig( &appinsights.TelemetryConfiguration{
 		InstrumentationKey: "NotEmpty",
 		EndpointUrl:        context.server.URL,
 		MaxBatchSize:       1,
@@ -264,7 +267,7 @@ func (c *RequestContext) receiveHandler(w http.ResponseWriter, r *http.Request) 
 
 func TestHandler(t *testing.T) {
 	assert := assert.New(t)
-	payload := "{\"name\":\"Microsoft.ApplicationInsights.Message\",\"time\":\"2018-01-25T12:13:42Z\",\"iKey\":\"NotEmpty\",\"tags\":{\"ai.cloud.role\":\"TestClient\",\"ai.device.id\":\"RAZER-BLADE\",\"ai.device.machineName\":\"RAZER-BLADE\",\"ai.device.os\":\"windows\",\"ai.device.roleInstance\":\"RAZER-BLADE\",\"ai.internal.sdkVersion\":\"go:0.3.1-pre\"},\"data\":{\"baseType\":\"MessageData\",\"baseData\":{\"ver\":2,\"properties\":{\"message\":\"I see dead people!\",\"source_level\":\"error\",\"source_timestamp\":\"2018-01-25 12:13:42.4839613 +0000 GMT m=+0.007540300\",\"tag\":\"fieldTag\",\"value\":\"fieldValue\"},\"message\":\"I see dead people!\",\"severityLevel\":3}}}"
+	payload := "{\"name\":\"Microsoft.ApplicationInsights.Message\",\"time\":\"2018-01-25T12:13:42Z\",\"iKey\":\"NotEmpty\",\"tags\":{\"app_insights.cloud.role\":\"TestClient\",\"app_insights.device.id\":\"RAZER-BLADE\",\"app_insights.device.machineName\":\"RAZER-BLADE\",\"app_insights.device.os\":\"windows\",\"app_insights.device.roleInstance\":\"RAZER-BLADE\",\"app_insights.internal.sdkVersion\":\"go:0.3.1-pre\"},\"data\":{\"baseType\":\"MessageData\",\"baseData\":{\"ver\":2,\"properties\":{\"message\":\"I see dead people!\",\"source_level\":\"error\",\"source_timestamp\":\"2018-01-25 12:13:42.4839613 +0000 GMT m=+0.007540300\",\"tag\":\"fieldTag\",\"value\":\"fieldValue\"},\"message\":\"I see dead people!\",\"severityLevel\":3}}}"
 	var postBody bytes.Buffer
 	gzipWriter := gzip.NewWriter(&postBody)
 	if _, err := gzipWriter.Write([]byte(payload)); err != nil {
