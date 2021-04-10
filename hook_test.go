@@ -27,7 +27,12 @@ func TestNew(t *testing.T) {
 }
 
 func TestNewWithAppInsightsConfig(t *testing.T) {
-	hook, err := New("asdfads")
+	hook, err := NewWithAppInsightsConfig(&appinsights.TelemetryConfiguration{
+		InstrumentationKey: "instrumentation_key",
+		MaxBatchSize:       10,              // optional
+		MaxBatchInterval:   time.Second * 5, // optional
+		Client: &http.Client{}, 			 //optional
+	})
 	assert.NotNil(t, hook)
 	assert.Nil(t, err)
 }
