@@ -1,4 +1,4 @@
-package app_insights
+package logrus_appinsights
 
 import (
 	"encoding/json"
